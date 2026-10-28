@@ -1,0 +1,83 @@
+version: "1"
+
+orchestrator:
+  afk: false
+  worktree_dir: ".sandai/worktrees"
+  max_iterations: 3
+  prompt_file: ".sandai/prompt.md"
+
+agent:
+  name: "gemini"
+
+sandbox:
+  provider: "podman"
+  image: "localhost/ai-agents-sandbox-gemini:latest"
+
+  runtime: "runsc"
+
+  security:
+    cap_drop:
+      - ALL
+    no_new_privileges: true
+    userns: "keep-id"
+
+  network:
+    # enforcement: "strict" (default) drops the sandbox's own route to the internet, so a
+    # tool that ignores HTTP_PROXY loses network access instead of escaping the allowlist.
+    # Requires provider: podman. Use "advisory" to only set the proxy variables, which
+    # leaves the allowlist trivially bypassable.
+    enforcement: "strict"
+
+    # Gemini's google_web_search runs on Google's servers, so the pages behind the results
+    # are read by Google, not by the sandbox, and allow_domains cannot filter that. Turning
+    # it off narrows the agent's reach but does NOT make the allowlist airtight: see the
+    # note on relay hosts below. Default keeps the tool available.
+    # allow_web_search: false
+
+    # Keep this list as small as the work allows, and prefer exact hosts over parent
+    # domains: matching is by suffix, so "googleapis.com" admits every *.googleapis.com
+    # service, and "google.com" would admit news.google.com and translate.google.com.
+    #
+    # WARNING: some hosts fetch arbitrary third-party content on the caller's behalf and
+    # return it over their own connection. Allowlisting one grants read access to the web
+    # through it, and no hostname filter can see that happening. Measured: with a domain
+    # blocked, the agent reached its content through news.google.com's RSS feed.
+    allow_domains:
+      # Gemini via OAuth personal login. These three are the only hosts gemini-cli
+      # contacted across full runs.
+      - "oauth2.googleapis.com"                 # OAuth token exchange
+      - "cloudcode-pa.googleapis.com"           # Model requests
+      - "play.googleapis.com"                   # Device / telemetry checks
+
+      # Only needed when authenticating with GEMINI_API_KEY instead of OAuth.
+      # This endpoint serves urlContext: whatever can reach it can ask Google to fetch an
+      # arbitrary URL and hand back the contents, which allow_domains cannot filter.
+      # - "generativelanguage.googleapis.com"
+
+      # Project dependencies. Add only what your build actually needs.
+      - "github.com"
+      - "api.github.com"
+      - "registry.npmjs.org"
+      # proxy.golang.org resolves arbitrary module paths from arbitrary VCS hosts, so it
+      # relays repository content the same way. Include it only if you build Go code.
+      # - "proxy.golang.org"
+
+
+      # openSUSE Build Service (for inspection/API queries)
+      - "api.opensuse.org"
+
+      # SonarQube Code Quality & Security (https://cq.opensuse.org/)
+      - "cq.opensuse.org"
+      - "obs-admin.suse.de"
+
+      # SCANOSS Open Source Inventory & Snippet Matching (https://scanoss.com / https://osskb.org)
+      - "api.osskb.org"
+      - "api.scanoss.com"
+      - "wiki.opensuse.org"
+
+   # hooks:
+   #  after_run:
+   #    timeout: 300s
+   #    steps:
+   #      - name: unit-tests
+   #        command: "python3 -m pytest"
