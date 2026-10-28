@@ -3177,6 +3177,15 @@ def make_dir(
             # checked out sub-projects. in this case, we still need to initialize it.
             print(statfrmt('A', prj_dir))
             Project.init_project(apiurl, prj_dir, project, package_tracking)
+        else:
+            store = osc_store.get_store(prj_dir)
+            prj_apiurl = store.apiurl
+            if prj_apiurl and conf.resolve_apiurl_alias(prj_apiurl) != conf.resolve_apiurl_alias(apiurl):
+                try:
+                    prj_name = store_read_project(prj_dir)
+                except Exception:
+                    prj_name = project
+                raise oscerr.ProjectApiurlMismatch(prj_name, prj_apiurl, apiurl)
 
         if is_project_dir(os.path.join(prj_dir, package)):
             # the thing exists, but is a project directory and not a package directory
@@ -3284,6 +3293,21 @@ def checkout_package(
     if not pathname:
         pathname = getTransActPath(os.path.join(prj_dir, package))
 
+    if outdir is None:
+        prj_apiurl = None
+        if prj_obj is not None:
+            prj_apiurl = prj_obj.apiurl
+        elif is_project_dir(prj_dir):
+            store = osc_store.get_store(prj_dir)
+            prj_apiurl = store.apiurl
+
+        if prj_apiurl and conf.resolve_apiurl_alias(prj_apiurl) != conf.resolve_apiurl_alias(apiurl):
+            try:
+                prj_name = prj_obj.name if prj_obj is not None else store_read_project(prj_dir)
+            except Exception:
+                prj_name = project
+            raise oscerr.ProjectApiurlMismatch(prj_name, prj_apiurl, apiurl)
+
     # before we create directories and stuff, check if the package actually
     # exists
     meta_data = b''.join(show_package_meta(apiurl, project, package))
@@ -3309,7 +3333,7 @@ def checkout_package(
 
         # add package to <prj>/.obs/_packages
         if not prj_obj:
-            prj_obj = Project(prj_dir)
+            prj_obj = Project(prj_dir, apiurl=apiurl)
         prj_obj.set_state(package, ' ')
         prj_obj.write_packages()
 
@@ -3336,7 +3360,7 @@ def checkout_package(
     if conf.config['do_package_tracking'] and outdir is None:
         # check if we can re-use an existing project object
         if prj_obj is None:
-            prj_obj = Project(prj_dir)
+            prj_obj = Project(prj_dir, apiurl=apiurl)
         prj_obj.set_state(p.name, ' ')
         prj_obj.write_packages()
     p.update(revision, server_service_files, size_limit)

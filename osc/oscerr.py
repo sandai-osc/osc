@@ -141,6 +141,20 @@ class ProjectError(OscBaseError):
         return result
 
 
+class ProjectApiurlMismatch(ProjectError):
+    """Exception raised when project on disk has a different apiurl"""
+
+    def __init__(self, prj, prj_apiurl=None, apiurl=None, msg=None):
+        if msg is None:
+            if prj_apiurl is not None and apiurl is not None:
+                msg = f"project on disk has a different apiurl: {prj_apiurl} (expected {apiurl})"
+            else:
+                msg = "project on disk has a different apiurl"
+        super().__init__(str(prj), msg=msg)
+        self.prj_apiurl = prj_apiurl
+        self.apiurl = apiurl
+
+
 class PackageError(OscBaseError):
     """Base class for all Package related exceptions"""
 
