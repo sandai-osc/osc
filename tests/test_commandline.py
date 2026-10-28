@@ -1,4 +1,5 @@
 import argparse
+import io
 import os
 import shutil
 import tempfile
@@ -14,6 +15,7 @@ from osc.commandline import pop_project_package_repository_arch_from_args
 from osc.commandline import pop_project_package_targetproject_targetpackage_from_args
 from osc.commandline import pop_repository_arch_from_args
 from osc.core import change_request_state
+from osc.core import get_osc_version
 from osc.oscerr import NoWorkingCopy, OscValueError
 from osc.store import Store
 
@@ -139,6 +141,73 @@ class TestCommandClasses(unittest.TestCase):
             args = main.parse_args(["test-cmd"])
             main.post_parse_args(args)
         self.assertEqual(args.apiurl, "https://localhost")
+
+    def test_version_command(self):
+        main = OscMainCommand()
+        main.load_commands()
+        main.load_legacy_commands()
+
+        args = main.parse_args(["version"])
+        self.assertEqual(args.command, "version")
+
+        with io.StringIO() as f:
+            with unittest.mock.patch("sys.stdout", f):
+                main.run(args)
+            self.assertEqual(f.getvalue(), f"{get_osc_version()}\n")
+
+    def test_version_option(self):
+        main = OscMainCommand()
+        main.load_commands()
+        main.load_legacy_commands()
+
+        args = main.parse_args(["--version"])
+        self.assertEqual(args.command, "version")
+
+        with io.StringIO() as f:
+            with unittest.mock.patch("sys.stdout", f):
+                main.run(args)
+            self.assertEqual(f.getvalue(), f"{get_osc_version()}\n")
+
+    def test_version_option_mapped_to_version_command(self):
+        main = OscMainCommand()
+        main.load_commands()
+        main.load_legacy_commands()
+
+        args_opt = main.parse_args(["--version"])
+        args_cmd = main.parse_args(["version"])
+        self.assertEqual(args_opt.command, args_cmd.command)
+        self.assertIs(args_opt._selected_command, args_cmd._selected_command)
+
+    def test_version_in_help(self):
+        main = OscMainCommand()
+        help_text = main.parser.format_help()
+        self.assertIn("--version", help_text)
+
+    def test_version_subcommand_unrecognized(self):
+        main = OscMainCommand()
+        main.load_command(TestCommand, "test.osc.commands")
+
+        self.assertRaises(SystemExit, main.parse_args, ["test-cmd", "--version"])
+
+    def test_legacy_osc_version(self):
+        from osc.commandline import Osc
+
+        osc_app = Osc()
+        with io.StringIO() as f:
+            with unittest.mock.patch("sys.stdout", f):
+                try:
+                    osc_app.main(["osc", "--version"])
+                except SystemExit:
+                    pass
+            self.assertEqual(f.getvalue(), f"{get_osc_version()}\n")
+
+        with io.StringIO() as f:
+            with unittest.mock.patch("sys.stdout", f):
+                try:
+                    osc_app.main(["osc", "version"])
+                except SystemExit:
+                    pass
+            self.assertEqual(f.getvalue(), f"{get_osc_version()}\n")
 
 
 class TestPopProjectPackageFromArgs(unittest.TestCase):

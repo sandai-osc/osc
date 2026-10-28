@@ -85,6 +85,8 @@ class Command:
                     continue
                 if "--help" in arg_args:
                     continue
+                if "--version" in arg_args:
+                    continue
 
                 arg_kwargs = arg_kwargs.copy()
                 arg_kwargs["help"] = argparse.SUPPRESS
