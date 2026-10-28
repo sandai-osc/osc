@@ -189,7 +189,7 @@ def run(prg, argv=None):
                 'and the following traceback to it:', file=sys.stderr)
             print(e.msg, file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
-        except oscerr.PackageError as e:
+        except (oscerr.ProjectError, oscerr.PackageError) as e:
             print(str(e), file=sys.stderr)
         except PackageError as e:
             print(f'{e.fname}:', e.msg, file=sys.stderr)

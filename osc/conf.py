@@ -1603,6 +1603,24 @@ def is_known_apiurl(url: str) -> bool:
     return apiurl in config['api_host_options']
 
 
+def resolve_apiurl_alias(alias: Optional[str]) -> Optional[str]:
+    """
+    Resolve apiurl alias to a canonical apiurl:
+    - look up alias in config.apiurl_aliases
+    - if not found, sanitize apiurl and look up again
+    - return the resolved or sanitized apiurl
+    """
+    if not alias:
+        return alias
+    apiurl = config.apiurl_aliases.get(alias, None)
+    if not apiurl:
+        # no alias matched, try again with a sanitized apiurl (with https:// prefix)
+        # and if there's no match again, just use the sanitized apiurl
+        apiurl = sanitize_apiurl(alias)
+        apiurl = config.apiurl_aliases.get(apiurl, apiurl)
+    return apiurl
+
+
 def extract_known_apiurl(url: str) -> Optional[str]:
     """
     Return longest prefix of given url that is known apiurl,
@@ -2058,15 +2076,6 @@ def get_config(override_conffile=None,
             read_value_from_store = True
         else:
             continue
-
-        def resolve_apiurl_alias(alias: str) -> str:
-            apiurl = config.apiurl_aliases.get(alias, None)
-            if not apiurl:
-                # no alias matched, try again with a sanitized apiurl (with https:// prefix)
-                # and if there's no match again, just use the sanitized apiurl
-                apiurl = sanitize_apiurl(alias)
-                apiurl = config.apiurl_aliases.get(apiurl, apiurl)
-            return apiurl
 
         if name == "apiurl":
             value = resolve_apiurl_alias(value)

@@ -70,7 +70,7 @@ class Project:
 
     REQ_STOREFILES = ('_project', '_apiurl')
 
-    def __init__(self, dir, getPackageList=True, progress_obj=None, wc_check=True):
+    def __init__(self, dir, getPackageList=True, progress_obj=None, wc_check=True, apiurl: Optional[str] = None):
         """
         Constructor.
 
@@ -83,6 +83,11 @@ class Project:
                 server of the list of packages in the project .
 
             `wc_check` : bool
+
+            `apiurl` : str, optional
+                Expected apiurl of the project working copy. If provided and
+                the working copy on disk has a different apiurl, ProjectApiurlMismatch
+                is raised.
         """
         from ..core import meta_get_packagelist
 
@@ -94,6 +99,9 @@ class Project:
         self.name = store_read_project(self.dir)
         self.scm_url = self.store.scmurl
         self.apiurl = self.store.apiurl
+
+        if apiurl and conf.resolve_apiurl_alias(self.apiurl) != conf.resolve_apiurl_alias(apiurl):
+            raise oscerr.ProjectApiurlMismatch(self.name, self.apiurl, apiurl)
 
         dirty_files = []
         if wc_check:
