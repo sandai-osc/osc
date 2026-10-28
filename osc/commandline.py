@@ -66,6 +66,11 @@ class OscMainCommand(MainCommand):
 
     def init_arguments(self):
         self.add_argument(
+            "--version",
+            action="store_true",
+            help="give version of osc binary",
+        )
+        self.add_argument(
             "-v",
             "--verbose",
             action="store_true",
@@ -138,13 +143,22 @@ class OscMainCommand(MainCommand):
             help="disable pager in stdout output",
         )
 
+    def parse_args(self, *args, **kwargs):
+        namespace = super().parse_args(*args, **kwargs)
+        if getattr(namespace, "version", False) and not namespace.command:
+            namespace.command = "version"
+            if self.subparsers and "version" in self.subparsers.choices:
+                subparser = self.subparsers.choices["version"]
+                namespace._selected_command = subparser.get_default("_selected_command")
+        return namespace
+
     def post_parse_args(self, args):
         from . import conf
         from . import store as osc_store
         from .meter import create_text_meter
 
-        if args.command == "help":
-            # HACK: never ask for credentials when displaying help
+        if args.command in ("help", "version"):
+            # HACK: never ask for credentials when displaying help or version
             return
 
         overrides = {}
@@ -767,6 +781,12 @@ class Osc(cmdln.Cmdln):
                 argument_parser.add_argument(*args, **kwargs)
 
         arguments = []
+        if not suppress:
+            arguments.append(dict(
+                names=['--version'],
+                action='store_true',
+                help='give version of osc binary',
+            ))
         arguments.append(dict(
             names=['-v', '--verbose'],
             action='store_true',
@@ -832,6 +852,10 @@ class Osc(cmdln.Cmdln):
 
         _add_parser_arguments_from_data(parser, arguments)
 
+    def post_argparse(self):
+        if getattr(self.options, "version", False) and not self.options.command:
+            self.options.command = "version"
+
     def get_api_url(self):
         # everything is handled in OscMainCommand.post_parse_args() and osc.conf.get_config() already
         # it should be sufficient to only return ``self.options.apiurl`` configured there
@@ -843,6 +867,7 @@ class Osc(cmdln.Cmdln):
 
         usage:
             osc version
+            osc --version
         """
 
         from .core import get_osc_version
