@@ -4,7 +4,6 @@ orchestrator:
   afk: false
   worktree_dir: ".sandai/worktrees"
   max_iterations: 3
-  prompt_file: ".sandai/prompt.md"
 
 agent:
   name: "gemini"
@@ -57,22 +56,15 @@ sandbox:
       # Project dependencies. Add only what your build actually needs.
       - "github.com"
       - "api.github.com"
-      - "registry.npmjs.org"
-      # proxy.golang.org resolves arbitrary module paths from arbitrary VCS hosts, so it
-      # relays repository content the same way. Include it only if you build Go code.
-      # - "proxy.golang.org"
-
 
       # openSUSE Build Service (for inspection/API queries)
       - "api.opensuse.org"
 
       # SonarQube Code Quality & Security (https://cq.opensuse.org/)
       - "cq.opensuse.org"
-      - "obs-admin.suse.de"
 
       # SCANOSS Open Source Inventory & Snippet Matching (https://scanoss.com / https://osskb.org)
       - "api.osskb.org"
-      - "api.scanoss.com"
       - "wiki.opensuse.org"
 
    # hooks:
