@@ -161,12 +161,12 @@ def http_request_wrap_file(func):
     Turn file path into a file object and close it automatically
     by using a context manager.
     """
-    def new_func(method, url, headers=None, data=None, file=None):
+    def new_func(method, url, headers=None, data=None, file=None, **kwargs):
         if file:
             with open(file, "rb") as f:
-                return func(method, url, headers, data, file=f)
+                return func(method, url, headers, data, file=f, **kwargs)
         else:
-            return func(method, url, headers, data, file)
+            return func(method, url, headers, data, file, **kwargs)
 
     new_func.__name__ = func.__name__
     new_func.__doc__ = func.__doc__
@@ -174,7 +174,7 @@ def http_request_wrap_file(func):
 
 
 @http_request_wrap_file
-def http_request(method: str, url: str, headers=None, data=None, file=None):
+def http_request(method: str, url: str, headers=None, data=None, file=None, timeout=None):
     """
     Send a HTTP request to a server.
 
@@ -194,6 +194,7 @@ def http_request(method: str, url: str, headers=None, data=None, file=None):
     :param headers: Dictionary of custom headers to send.
     :param data: Data to send in the request body (conflicts with `file`).
     :param file: Path to a file to send as data in the request body (conflicts with `data`).
+    :param timeout: Timeout for the request.
     """
 
     purl = urllib3.util.parse_url(url)
@@ -231,8 +232,14 @@ def http_request(method: str, url: str, headers=None, data=None, file=None):
             # direct connection
             manager = POOL_MANAGER
 
+        urlopen_kwargs = {}
+        if timeout is not None:
+            urlopen_kwargs["timeout"] = timeout
+        else:
+            urlopen_kwargs["timeout"] = urllib3.Timeout(connect=10.0, read=None)
+
         with debug_timer():
-            response = manager.urlopen(method, url, body=data, headers=headers, preload_content=False)
+            response = manager.urlopen(method, url, body=data, headers=headers, preload_content=False, **urlopen_kwargs)
 
         if response.status / 100 != 2:
             raise urllib.error.HTTPError(url, response.status, response.reason, response.headers, response)
@@ -390,11 +397,16 @@ def http_request(method: str, url: str, headers=None, data=None, file=None):
         if reply != "y":
             raise oscerr.UserAbort()
 
+    urlopen_kwargs = {}
+    if timeout is not None:
+        urlopen_kwargs["timeout"] = timeout
+
     try:
         with debug_timer():
             response = pool.urlopen(
                 method, urlopen_url, body=data, headers=headers,
-                preload_content=False, assert_same_host=assert_same_host
+                preload_content=False, assert_same_host=assert_same_host,
+                **urlopen_kwargs
             )
     except urllib3.exceptions.MaxRetryError as e:
         if not isinstance(e.reason, urllib3.exceptions.SSLError):
@@ -448,6 +460,11 @@ def http_request(method: str, url: str, headers=None, data=None, file=None):
         raise urllib.error.HTTPError(url, response.status, response.reason, response.headers, response)
 
     return response
+
+
+# pylint: disable=C0103,C0116
+def http_HEAD(*args, **kwargs):
+    return http_request("HEAD", *args, **kwargs)
 
 
 # pylint: disable=C0103,C0116
