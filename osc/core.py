@@ -4662,7 +4662,7 @@ def get_prj_results(
     return r
 
 
-def streamfile(url: str, http_meth=http_GET, bufsize=8192, data=None, progress_obj=None, text=None):
+def streamfile(url: str, http_meth=http_GET, bufsize=8192, data=None, progress_obj=None, text=None, timeout=None):
     """
     performs http_meth on url and read bufsize bytes from the response
     until EOF is reached. After each read bufsize bytes are yielded to the
@@ -4678,7 +4678,7 @@ def streamfile(url: str, http_meth=http_GET, bufsize=8192, data=None, progress_o
         retries = retries + 1
         if retries > 1 and conf.config['http_debug']:
             print('\n\nRetry %d --' % (retries - 1), url, file=sys.stderr)
-        f = http_meth.__call__(url, data=data)
+        f = http_meth.__call__(url, data=data, timeout=timeout)
         cl = f.info().get('Content-Length')
 
     if cl is not None:
