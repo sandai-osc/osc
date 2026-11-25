@@ -11,11 +11,16 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from urllib.error import URLError
+from urllib.parse import urlsplit
 from urllib.request import HTTPError
+
+import urllib3.exceptions
 
 from . import checker as osc_checker
 from . import conf
 from . import oscerr
+from .connection import http_request
 from .core import makeurl, dgst
 from .grabber import OscFileGrabber, OscMirrorGroup
 from .meter import create_text_meter
@@ -41,6 +46,7 @@ class Fetcher:
         self.cpio = {}
         self.enable_cpio = enable_cpio
         self.download_api_only = download_api_only
+        self._mirror_reachability = {}
 
         self.gr = OscFileGrabber(progress_obj=self.progress_obj)
 
@@ -146,9 +152,21 @@ class Fetcher:
                     self.move_package(tmpfile.name, pac.localdir, pac)
 
             if not mg_stat:
+                if not self.download_api_only and pac.urllist and hasattr(mg, 'failed_mirrors') and mg.failed_mirrors:
+                    has_connection_failure = False
+                    for mirror, err in mg.failed_mirrors.items():
+                        if not isinstance(err, HTTPError):
+                            has_connection_failure = True
+                            netloc = urlsplit(mirror).netloc
+                            self._mirror_reachability[netloc] = False
+                            print(f"Download mirror '{netloc}' failed, enabling --download-api-only.")
+                    if has_connection_failure:
+                        self.download_api_only = True
+
                 if self.enable_cpio:
-                    print('%s/%s: attempting download from api, since not found'
-                          % (pac.project, pac.name))
+                    if not self.download_api_only:
+                        print('%s/%s: attempting download from api, since not found'
+                              % (pac.project, pac.name))
                     self.__add_cpio(pac)
                     return
                 print()
@@ -195,6 +213,8 @@ class Fetcher:
 
     def _build_urllist(self, buildinfo, pac):
         if self.download_api_only:
+            if not self.enable_cpio:
+                return [f"{buildinfo.apiurl}/build/{pac.project}/{pac.repository}/{pac.repoarch}/{pac.repopackage}/{pac.repofilename}"]
             return []
         urllist = self.urllist
         key = f'{pac.project}/{pac.repository}'
@@ -202,6 +222,27 @@ class Fetcher:
         if project_repo_url is not None:
             urllist = [project_repo_url]
         return urllist
+
+    def check_mirror_reachable(self, url, timeout=3.0):
+        netloc = urlsplit(url).netloc
+        if netloc in self._mirror_reachability:
+            return self._mirror_reachability[netloc]
+
+        reachable = True
+        try:
+            resp = http_request("HEAD", url, timeout=timeout)
+            if hasattr(resp, "close"):
+                resp.close()
+        except HTTPError:
+            # Server responded with an HTTP status code (e.g. 404, 403, 405), so host is reachable
+            reachable = True
+        except (URLError, urllib3.exceptions.HTTPError, OSError) as e:
+            if self.http_debug:
+                print(f"Mirror reachability check failed for '{url}': {e}", file=sys.stderr)
+            reachable = False
+
+        self._mirror_reachability[netloc] = reachable
+        return reachable
 
     def run(self, buildinfo):
         apiurl = buildinfo.apiurl
@@ -244,6 +285,33 @@ class Fetcher:
         if all:
             miss = 100.0 * needed / all
         print("%.1f%% cache miss. %d/%d dependencies cached.\n" % (miss, cached, all))
+
+        if not self.download_api_only and not self.offline and needed > 0:
+            uncached = [i for i in buildinfo.deps if not os.path.exists(i.fullfilename)]
+            has_mirrors = False
+            all_mirrors_unreachable = True
+            unreachable_netlocs = set()
+
+            for i in uncached:
+                new_urllist = []
+                for u in i.urllist:
+                    has_mirrors = True
+                    netloc = urlsplit(u).netloc
+                    if netloc in unreachable_netlocs:
+                        continue
+                    if not self.check_mirror_reachable(u):
+                        unreachable_netlocs.add(netloc)
+                        print(f"Download mirror '{netloc}' is not reachable, enabling --download-api-only.")
+                        continue
+                    new_urllist.append(u)
+                    all_mirrors_unreachable = False
+                i.urllist = new_urllist
+
+            if has_mirrors and all_mirrors_unreachable:
+                self.download_api_only = True
+                for i in buildinfo.deps:
+                    i.urllist = self._build_urllist(buildinfo, i)
+
         done = 1
         for i in buildinfo.deps:
             if not os.path.exists(i.fullfilename):
@@ -261,6 +329,11 @@ class Fetcher:
                     else:
                         prefix = '[%d/%d] ' % (done, needed)
                     self.fetch(i, prefix=prefix)
+
+                    if self.download_api_only:
+                        for rem_dep in buildinfo.deps:
+                            if not os.path.exists(rem_dep.fullfilename) and rem_dep != i:
+                                rem_dep.urllist = self._build_urllist(buildinfo, rem_dep)
 
                     if not os.path.isfile(i.fullfilename):
                         # if the file wasn't downloaded and cannot be found on disk,
